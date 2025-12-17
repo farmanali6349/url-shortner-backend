@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const clickSchema = new mongoose.Schema(
   {
-    urlId: { type: mongoose.Schema.Types.ObjectId, ref: "url" },
+    urlId: { type: mongoose.Schema.Types.ObjectId, ref: "urls" },
     slug: String,
     ip: String,
     userAgent: String,
