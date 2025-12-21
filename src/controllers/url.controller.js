@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { URL } from "../model/url.model.js";
 import { detectDeviceInfo } from "../utils/detectDeviceInfo.js";
 import { Click } from "../model/click.model.js";
+import { url } from "inspector";
 
 export const shortenUrl = async (req, res) => {
   const data = req.body;
@@ -26,6 +27,7 @@ export const shortenUrl = async (req, res) => {
 
   try {
     const shortenUrl = await URL.create({
+      createdBy: req?.user?.id || null,
       totalClicks: 0,
       originalUrl: url,
       lastVisited: null,
@@ -53,8 +55,6 @@ export const shortenUrl = async (req, res) => {
 export const visitUrl = async (req, res) => {
   const slug = req.params?.slug;
 
-  console.log("Slug I received", slug);
-
   const urlDoc = await URL.findOne({ slug });
 
   if (!urlDoc) {
@@ -69,6 +69,10 @@ export const visitUrl = async (req, res) => {
   }
 
   try {
+    // if it's created by a guest user, then simply redirect
+    if (!urlDoc?.createdBy) {
+      return res.redirect(urlDoc.originalUrl);
+    }
     // Update states
     urlDoc.totalClicks = (urlDoc.totalClicks || 0) + 1;
     urlDoc.lastVisited = Date.now();
@@ -124,22 +128,41 @@ export const visitUrl = async (req, res) => {
 };
 
 export const getStats = async (req, res) => {
+  // User Verification (Checking if Link is created by logged in user)
   const slug = req.params?.slug;
 
+  // Find Url
+  const url = await URL.findOne({ slug }, { createdBy: 1 });
+
+  // See if url or user author is not present
+  if (!url || !url?.createdBy) {
+    return res.status(404).json({
+      statusCode: 404,
+      success: false,
+      message: "No Record Found or un-authorized access.",
+      error: new Error("No Record Found or un-authorized access."),
+    });
+  }
+
+  // Verify if loggedin user is author of requested url
+  if (req?.user?.id !== url.createdBy.toString()) {
+    return res.status(401).json({
+      statusCode: 401,
+      success: false,
+      message: "Un-authorized Access",
+      error: new Error("Un-authorized Access"),
+    });
+  }
+
+  // Find clicks and generate report
   const clicks = await Click.find({ slug: slug });
 
   if (!(clicks.length > 0)) {
-    return res.status(200).json({
-      status: "success",
-      statusCode: 200,
+    return res.status(404).json({
+      status: "failure",
+      statusCode: 404,
       message: "No Record Found.",
-      data: {
-        totalClicks: 0,
-        devices: [],
-        browsers: [],
-        operatingSystems: [],
-        countries: [],
-      },
+      data: null,
     });
   }
 
@@ -199,6 +222,106 @@ export const getStats = async (req, res) => {
       message: error?.message || "Error in getting record",
       details: error?.details,
       data: {},
+    });
+  }
+};
+
+export const getUrls = async (req, res) => {
+  const userId = req?.user?.id;
+
+  if (!userId) {
+    return res.status(401).json({
+      statusCode: 401,
+      success: false,
+      message: "Un-authorized access or User is not loggedin",
+      error: new Error("Un-authorized access or User is not loggedin"),
+    });
+  }
+
+  const urls = await URL.find(
+    { createdBy: userId },
+    { _id: true, originalUrl: true, totalClicks: true, slug: true }
+  );
+
+  if (!urls.length > 0) {
+    return res.status(404).json({
+      statusCode: 404,
+      success: false,
+      message: "No URL Found",
+      error: new Error("No URL found"),
+    });
+  }
+
+  return res.status(200).json({
+    statusCode: 200,
+    success: true,
+    message: "URL retrieved successfully.",
+    data: urls,
+  });
+};
+
+export const getNumberOfAllUrls = async (req, res) => {
+  try {
+    const count = await URL.countDocuments();
+    return res.status(200).json({
+      statusCode: 200,
+      success: true,
+      message: "Count successfully created",
+      data: { count },
+    });
+  } catch (error) {
+    res.status(500).json({
+      statusCode: 500,
+      success: false,
+      message: error?.message || "SERVER SIDE ERROR",
+      error,
+    });
+  }
+};
+
+export const deleteUrl = async (req, res) => {
+  const slug = req.params?.slug;
+
+  // Validate slug
+  if (!slug) {
+    return res.status(400).json({
+      statusCode: 400,
+      success: false,
+      message: "Slug is required",
+      error: new Error("Slug is required"),
+      data: null,
+    });
+  }
+
+  // Deleting URL and associated clicks
+  try {
+    const deletedUrl = await URL.findOneAndDelete({ slug, createdBy: req?.user?.id });
+    if (!deletedUrl) {
+      return res.status(404).json({
+        statusCode: 404,
+        success: false,
+        message: "URL not found or you do not have permission to delete it",
+        error: new Error("URL not found or unauthorized"),
+        data: null,
+      });
+    }
+
+    await Click.deleteMany({ urlId: deletedUrl._id });
+
+    res.status(200).json({
+      statusCode: 200,
+      success: true,
+      message: "URL and associated clicks deleted successfully",
+      data: null,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({
+      statusCode: 500,
+      success: false,
+      message: "Server Error while deleting URL",
+      error: error,
+      data: null,
     });
   }
 };

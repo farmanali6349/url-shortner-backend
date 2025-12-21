@@ -4,7 +4,7 @@ import { ENV } from "../config/env.js";
 // Create token with expiration and algorithm
 export const createToken = data => {
   return jwt.sign(data, ENV.jwtSecret, {
-    expiresIn: "1h",
+    expiresIn: "7d",
     algorithm: "HS256",
   });
 };

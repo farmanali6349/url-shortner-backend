@@ -97,15 +97,11 @@ userRouter.post("/login", async (req, res) => {
 
     const token = createToken({ id: user._id, name: user.name, email: user.email });
 
-    if (!token) {
-      throw new Error("Loggin Token Not Generated");
-    }
-
     return res.status(200).json({
       status: "success",
       statusCode: 200,
       message: "You are loggedin.",
-      token,
+      data: { token },
     });
   } catch (error) {
     return res.status(500).json({
@@ -116,6 +112,36 @@ userRouter.post("/login", async (req, res) => {
       data: null,
     });
   }
+});
+userRouter.get("/verify-user", async (req, res) => {
+  const user = req.user;
+
+  if (!user || !user?.email) {
+    return res.status(400).json({
+      statusCode: 400,
+      success: false,
+      message: "Auth token is missing or user not found",
+      error: new Error("Auth token is missing or user not found"),
+    });
+  }
+
+  const exisitingUser = await User.findOne({ email: user?.email });
+
+  if (!exisitingUser) {
+    return res.status(404).json({
+      statusCode: 404,
+      success: false,
+      message: "User not found",
+      error: new Error("User not found"),
+    });
+  }
+
+  return res.status(200).json({
+    statusCode: 200,
+    success: true,
+    message: "User found successfully",
+    data: {},
+  });
 });
 
 export { userRouter };
